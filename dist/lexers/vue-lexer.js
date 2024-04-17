@@ -30,7 +30,7 @@ function _isNativeReflectConstruct() {
     return false
   }
 }
-import { parse, compileTemplate } from '@vue/compiler-sfc'
+import { parse, compileTemplate, compileScript } from '@vue/compiler-sfc'
 
 import BaseLexer from './base-lexer.js'
 import JavascriptLexer from './javascript-lexer.js'
@@ -43,7 +43,6 @@ var VueLexer = /*#__PURE__*/ (function (_BaseLexer) {
       arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {}
     _classCallCheck(this, VueLexer)
     _this = _super.call(this, options)
-
     _this.functions = options.functions || ['$t']
     return _this
   }
@@ -53,31 +52,33 @@ var VueLexer = /*#__PURE__*/ (function (_BaseLexer) {
       value: function extract(content, filename) {
         var _this2 = this
         var keys = []
-
-        var Lexer = new JavascriptLexer()
-        Lexer.on('warning', function (warning) {
-          return _this2.emit('warning', warning)
-        })
-        keys = keys.concat(Lexer.extract(content))
-
-        // Parse the SFC content
         var sfc = parse(content, { sourceMap: true, filename: filename })
-        var scriptContent = sfc.descriptor.script
-          ? sfc.descriptor.script.content
-          : ''
-        var templateContent = sfc.descriptor.template
-          ? sfc.descriptor.template.content
-          : ''
 
-        // Extract i18n keys from the script content
-        var Lexer2 = new JavascriptLexer({ functions: this.functions })
-        Lexer2.on('warning', function (warning) {
-          return _this2.emit('warning', warning)
-        })
-        keys = keys.concat(Lexer2.extract(scriptContent))
+        // Handle <script> block
+        if (sfc.descriptor.script) {
+          var scriptContent = sfc.descriptor.script.content
+          var Lexer1 = new JavascriptLexer({ functions: this.functions })
+          Lexer1.on('warning', function (warning) {
+            return _this2.emit('warning', warning)
+          })
+          keys = keys.concat(Lexer1.extract(scriptContent))
+        }
 
-        // Compile the template content and extract i18n keys
-        if (templateContent) {
+        // Handle <script setup> block
+        if (sfc.descriptor.scriptSetup) {
+          var scriptSetupContent = compileScript(sfc.descriptor, {
+            id: filename,
+          }).content
+          var Lexer2 = new JavascriptLexer({ functions: this.functions })
+          Lexer2.on('warning', function (warning) {
+            return _this2.emit('warning', warning)
+          })
+          keys = keys.concat(Lexer2.extract(scriptSetupContent))
+        }
+
+        // Handle <template> block
+        if (sfc.descriptor.template) {
+          var templateContent = sfc.descriptor.template.content
           var compiledTemplate = compileTemplate({
             source: templateContent,
             filename: filename,

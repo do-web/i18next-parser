@@ -1,4 +1,4 @@
-import { parse, compileTemplate } from '@vue/compiler-sfc'
+import { parse, compileTemplate, compileScript } from '@vue/compiler-sfc'
 
 import BaseLexer from './base-lexer.js'
 import JavascriptLexer from './javascript-lexer.js'
@@ -6,33 +6,34 @@ import JavascriptLexer from './javascript-lexer.js'
 export default class VueLexer extends BaseLexer {
   constructor(options = {}) {
     super(options)
-
     this.functions = options.functions || ['$t']
   }
 
   extract(content, filename) {
     let keys = []
-
-    const Lexer = new JavascriptLexer()
-    Lexer.on('warning', (warning) => this.emit('warning', warning))
-    keys = keys.concat(Lexer.extract(content))
-
-    // Parse the SFC content
     const sfc = parse(content, { sourceMap: true, filename })
-    const scriptContent = sfc.descriptor.script
-      ? sfc.descriptor.script.content
-      : ''
-    const templateContent = sfc.descriptor.template
-      ? sfc.descriptor.template.content
-      : ''
 
-    // Extract i18n keys from the script content
-    const Lexer2 = new JavascriptLexer({ functions: this.functions })
-    Lexer2.on('warning', (warning) => this.emit('warning', warning))
-    keys = keys.concat(Lexer2.extract(scriptContent))
+    // Handle <script> block
+    if (sfc.descriptor.script) {
+      const scriptContent = sfc.descriptor.script.content
+      const Lexer1 = new JavascriptLexer({ functions: this.functions })
+      Lexer1.on('warning', (warning) => this.emit('warning', warning))
+      keys = keys.concat(Lexer1.extract(scriptContent))
+    }
 
-    // Compile the template content and extract i18n keys
-    if (templateContent) {
+    // Handle <script setup> block
+    if (sfc.descriptor.scriptSetup) {
+      const scriptSetupContent = compileScript(sfc.descriptor, {
+        id: filename,
+      }).content
+      const Lexer2 = new JavascriptLexer({ functions: this.functions })
+      Lexer2.on('warning', (warning) => this.emit('warning', warning))
+      keys = keys.concat(Lexer2.extract(scriptSetupContent))
+    }
+
+    // Handle <template> block
+    if (sfc.descriptor.template) {
+      const templateContent = sfc.descriptor.template.content
       const compiledTemplate = compileTemplate({
         source: templateContent,
         filename,
